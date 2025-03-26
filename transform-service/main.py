@@ -1,6 +1,5 @@
 import os
 import json
-import requests
 import csv
 import time
 from google.cloud import storage
@@ -11,41 +10,6 @@ import functions_framework
 GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "etlpipelinehomeworkhbcloudrun")
 BQ_DATASET_ID = os.environ.get("BQ_DATASET_ID", "coursera_data")
 BQ_TABLE_ID = os.environ.get("BQ_TABLE_ID", "courses")
-
-# GraphQL API endpoint and headers
-URL = "https://www.coursera.org/graphql-gateway?opname=DiscoveryCollections"
-HEADERS = {
-    "accept": "application/json",
-    "content-type": "application/json",
-    "operation-name": "DiscoveryCollections",
-    "origin": "https://www.coursera.org",
-    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-    "x-csrf3-token": "1743681871.xQuQa8u8tAbHg2hP",  # Replace with a fresh token
-}
-PAYLOAD = [
-    {
-        "operationName": "DiscoveryCollections",
-        "variables": {"contextType": "PAGE", "contextId": "search-zero-state"},
-        "query": """
-        query DiscoveryCollections($contextType: String!, $contextId: String!, $passThroughParameters: [DiscoveryCollections_PassThroughParameter!]) {
-          DiscoveryCollections {
-            queryCollections(
-              input: {contextType: $contextType, contextId: $contextId, passThroughParameters: $passThroughParameters}
-            ) {
-              id
-              label
-              entities {
-                id
-                slug
-                name
-                url
-              }
-            }
-          }
-        }
-    """,
-    }
-]
 
 # BigQuery schema
 SCHEMA = [
@@ -60,7 +24,19 @@ SCHEMA = [
 CSV_HEADERS = [field.name for field in SCHEMA]
 
 
+def download_from_gcs(bucket_name, source_blob_name, destination_file_name):
+    """Downloads a file from GCS."""
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(source_blob_name)
+    blob.download_to_filename(destination_file_name)
+    print(
+        f"Downloaded gs://{bucket_name}/{source_blob_name} to {destination_file_name}"
+    )
+
+
 def upload_to_gcs(bucket_name, source_file_name, destination_blob_name):
+    """Uploads a file to GCS."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
@@ -68,25 +44,10 @@ def upload_to_gcs(bucket_name, source_file_name, destination_blob_name):
     print(f"Uploaded {source_file_name} to gs://{bucket_name}/{destination_blob_name}")
 
 
-@functions_framework.http
-def main(request):
+def transform_data(raw_data):
+    """Transforms the raw API response into a list of dictionaries for loading."""
     try:
-        # Extract data from Coursera API
-        response = requests.post(URL, headers=HEADERS, json=PAYLOAD)
-        if response.status_code != 200:
-            print(f"API failed with status {response.status_code}: {response.text}")
-            raise Exception(f"API request failed: {response.status_code}")
-        data = response.json()
-        print("API request succeeded")
-
-        # Save raw JSON to GCS
-        json_file_path = "/tmp/coursera_response.json"
-        with open(json_file_path, "w") as json_file:
-            json.dump(data, json_file)
-        upload_to_gcs(GCS_BUCKET_NAME, json_file_path, "coursera_response.json")
-
-        # Transform data
-        collections = data[0]["data"]["DiscoveryCollections"]["queryCollections"]
+        collections = raw_data[0]["data"]["DiscoveryCollections"]["queryCollections"]
         transformed_data = []
         for collection in collections:
             collection_label = collection["label"]
@@ -101,6 +62,26 @@ def main(request):
                     "url": "https://www.coursera.org" + entity["url"],
                 }
                 transformed_data.append(row)
+        print(f"Transformed {len(transformed_data)} rows")
+        return transformed_data
+    except Exception as e:
+        print(f"Error during transformation: {str(e)}")
+        raise e
+
+
+@functions_framework.http
+def main(request):
+    try:
+        # Download raw JSON from GCS
+        json_file_path = "/tmp/coursera_response.json"
+        download_from_gcs(GCS_BUCKET_NAME, "coursera_response.json", json_file_path)
+
+        # Load the raw JSON
+        with open(json_file_path, "r") as json_file:
+            raw_data = json.load(json_file)
+
+        # Transform the data
+        transformed_data = transform_data(raw_data)
 
         # Save transformed data to GCS as CSV
         csv_file_path = "/tmp/coursera_courses.csv"
@@ -131,9 +112,7 @@ def main(request):
             print(f"Creating table {BQ_TABLE_ID}: {e}")
             table = bigquery.Table(table_ref, schema=SCHEMA)
             bq_client.create_table(table)
-            # Wait for table creation to complete
-            time.sleep(5)  # Add a 5-second delay to ensure the table is ready
-            # Verify table creation
+            time.sleep(5)  # Wait for table creation to complete
             try:
                 bq_client.get_table(table_ref)
                 print(f"Table {BQ_TABLE_ID} created successfully")
@@ -141,8 +120,8 @@ def main(request):
                 print(f"Failed to create table {BQ_TABLE_ID}: {create_error}")
                 raise create_error
 
-        # Insert data
-        table = bq_client.get_table(table_ref)  # Ensure the table object is fresh
+        # Insert data into BigQuery
+        table = bq_client.get_table(table_ref)
         errors = bq_client.insert_rows_json(table, transformed_data)
         if errors:
             print(f"BigQuery insert errors: {errors}")
@@ -164,4 +143,3 @@ def main(request):
             500,
             {"Content-Type": "application/json"},
         )
-extract and transform
