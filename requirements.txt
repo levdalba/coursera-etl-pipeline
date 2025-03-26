@@ -1,4 +1,4 @@
 functions-framework==3.*
-google-cloud-storage
-google-cloud-bigquery
-requests
+google-cloud-storage==2.18.2
+google-cloud-bigquery==3.25.0
+requests==2.32.3

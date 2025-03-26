@@ -1,44 +1,10 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environments
-venv/
-env/
-ENV/
-
-# Distribution / packaging
+*.pyc
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# IDE specific files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Service account keys
-*.json
-
-# Local environment
+env/
+venv/
 .env
-.env.local
-credentials/
-
-# Logs
-*.log
+coursera_response_*.json
+coursera_courses_*.csv

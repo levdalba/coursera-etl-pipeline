@@ -1,0 +1,25 @@
+steps:
+    # Build the Docker image for extract-service
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['build', '-t', 'gcr.io/$PROJECT_ID/extract-service', '.']
+      dir: 'extract-service'
+
+    # Push the Docker image to Container Registry
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['push', 'gcr.io/$PROJECT_ID/extract-service']
+
+    # Deploy to Cloud Run
+    - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+      args:
+          - 'run'
+          - 'deploy'
+          - 'extract-service'
+          - '--image=gcr.io/$PROJECT_ID/extract-service'
+          - '--region=asia-southeast1'
+          - '--platform=managed'
+          - '--allow-unauthenticated'
+          - '--set-env-vars=GCS_BUCKET_NAME=etlpipelinehomeworkhbcloudrun-asia-southeast1'
+      entrypoint: 'gcloud'
+
+images:
+    - 'gcr.io/$PROJECT_ID/extract-service'

@@ -1,0 +1,25 @@
+steps:
+    # Build the Docker image for transform-service
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['build', '-t', 'gcr.io/$PROJECT_ID/transform-service', '.']
+      dir: 'transform-service'
+
+    # Push the Docker image to Container Registry
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['push', 'gcr.io/$PROJECT_ID/transform-service']
+
+    # Deploy to Cloud Run
+    - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+      args:
+          - 'run'
+          - 'deploy'
+          - 'transform-service'
+          - '--image=gcr.io/$PROJECT_ID/transform-service'
+          - '--region=asia-southeast1'
+          - '--platform=managed'
+          - '--allow-unauthenticated'
+          - '--set-env-vars=GCS_BUCKET_NAME=etlpipelinehomeworkhbcloudrun-asia-southeast1,PROJECT_ID=training-triggering-pipeline'
+      entrypoint: 'gcloud'
+
+images:
+    - 'gcr.io/$PROJECT_ID/transform-service'

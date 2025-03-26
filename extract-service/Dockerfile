@@ -1,17 +1,15 @@
-# Use the official Python runtime as a parent image
-FROM python:3.9-slim
+# Use the official Python slim image (updated to 3.12 for better performance and security)
+FROM python:3.12-slim
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /app
 
-# Copy the requirements file into the container
+# Copy the requirements file and install dependencies
 COPY requirements.txt .
-
-# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code into the container
+# Copy the application code
 COPY main.py .
 
-# Command to run the application
-CMD ["functions-framework", "--target", "main", "--port", "8080"]
+# Run the app with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "main:app"]
