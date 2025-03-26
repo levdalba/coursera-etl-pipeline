@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import csv
+import time
 from google.cloud import storage
 from google.cloud import bigquery
 import functions_framework
@@ -19,7 +20,7 @@ HEADERS = {
     "operation-name": "DiscoveryCollections",
     "origin": "https://www.coursera.org",
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-    "x-csrf3-token": "1743681871.xQuQa8u8tAbHg2hP",  # Replace with the fresh token
+    "x-csrf3-token": "1743681871.xQuQa8u8tAbHg2hP",  # Replace with a fresh token
 }
 PAYLOAD = [
     {
@@ -70,6 +71,7 @@ def upload_to_gcs(bucket_name, source_file_name, destination_blob_name):
 @functions_framework.http
 def main(request):
     try:
+        # Extract data from Coursera API
         response = requests.post(URL, headers=HEADERS, json=PAYLOAD)
         if response.status_code != 200:
             print(f"API failed with status {response.status_code}: {response.text}")
@@ -77,11 +79,13 @@ def main(request):
         data = response.json()
         print("API request succeeded")
 
+        # Save raw JSON to GCS
         json_file_path = "/tmp/coursera_response.json"
         with open(json_file_path, "w") as json_file:
             json.dump(data, json_file)
         upload_to_gcs(GCS_BUCKET_NAME, json_file_path, "coursera_response.json")
 
+        # Transform data
         collections = data[0]["data"]["DiscoveryCollections"]["queryCollections"]
         transformed_data = []
         for collection in collections:
@@ -94,10 +98,11 @@ def main(request):
                     "course_name": entity["name"],
                     "course_id": entity["id"],
                     "slug": entity["slug"],
-                    "url": entity["url"],
+                    "url": "https://www.coursera.org" + entity["url"],
                 }
                 transformed_data.append(row)
 
+        # Save transformed data to GCS as CSV
         csv_file_path = "/tmp/coursera_courses.csv"
         with open(csv_file_path, "w", newline="", encoding="utf-8") as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=CSV_HEADERS)
@@ -105,22 +110,46 @@ def main(request):
             writer.writerows(transformed_data)
         upload_to_gcs(GCS_BUCKET_NAME, csv_file_path, "coursera_courses.csv")
 
+        # Load data into BigQuery
         bq_client = bigquery.Client()
         dataset_ref = bq_client.dataset(BQ_DATASET_ID)
+
+        # Ensure dataset exists
         try:
             bq_client.get_dataset(dataset_ref)
-        except:
+            print(f"Dataset {BQ_DATASET_ID} already exists")
+        except Exception as e:
+            print(f"Creating dataset {BQ_DATASET_ID}: {e}")
             bq_client.create_dataset(dataset_ref)
+
+        # Ensure table exists
         table_ref = dataset_ref.table(BQ_TABLE_ID)
         try:
-            bq_client.delete_table(table_ref)
-        except:
-            pass
-        table = bigquery.Table(table_ref, schema=SCHEMA)
-        bq_client.create_table(table)
+            bq_client.get_table(table_ref)
+            print(f"Table {BQ_TABLE_ID} already exists")
+        except Exception as e:
+            print(f"Creating table {BQ_TABLE_ID}: {e}")
+            table = bigquery.Table(table_ref, schema=SCHEMA)
+            bq_client.create_table(table)
+            # Wait for table creation to complete
+            time.sleep(5)  # Add a 5-second delay to ensure the table is ready
+            # Verify table creation
+            try:
+                bq_client.get_table(table_ref)
+                print(f"Table {BQ_TABLE_ID} created successfully")
+            except Exception as create_error:
+                print(f"Failed to create table {BQ_TABLE_ID}: {create_error}")
+                raise create_error
+
+        # Insert data
+        table = bq_client.get_table(table_ref)  # Ensure the table object is fresh
         errors = bq_client.insert_rows_json(table, transformed_data)
         if errors:
+            print(f"BigQuery insert errors: {errors}")
             raise Exception(f"BigQuery insert errors: {errors}")
+        print(
+            f"Inserted {len(transformed_data)} rows into BigQuery table {BQ_TABLE_ID}"
+        )
 
         return (
             json.dumps({"status": "success"}),
