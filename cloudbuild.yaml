@@ -1,0 +1,16 @@
+steps:
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['build', '-t', 'gcr.io/$PROJECT_ID/cloudrun-etl:latest', '.']
+    - name: 'gcr.io/cloud-builders/docker'
+      args: ['push', 'gcr.io/$PROJECT_ID/cloudrun-etl:latest']
+    - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+      args:
+          - 'run'
+          - 'deploy'
+          - 'cloudrun-etl'
+          - '--image=gcr.io/$PROJECT_ID/cloudrun-etl:latest'
+          - '--region=asia-southeast1'
+          - '--platform=managed'
+          - '--allow-unauthenticated'
+      entrypoint: 'gcloud'
+timeout: '1200s'
