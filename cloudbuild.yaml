@@ -1,16 +1,16 @@
 steps:
     # Build and deploy extract-service
     - name: 'gcr.io/cloud-builders/docker'
-      args: ['build', '-t', 'gcr.io/$PROJECT_ID/extract-service', '.']
+      args: ['build', '-t', 'gcr.io/$_PROJECT_ID/extract-service', '.']
       dir: 'extract-service'
     - name: 'gcr.io/cloud-builders/docker'
-      args: ['push', 'gcr.io/$PROJECT_ID/extract-service']
+      args: ['push', 'gcr.io/$_PROJECT_ID/extract-service']
     - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
       args:
           - 'run'
           - 'deploy'
           - 'extract-service'
-          - '--image=gcr.io/$PROJECT_ID/extract-service'
+          - '--image=gcr.io/$_PROJECT_ID/extract-service'
           - '--region=asia-southeast1'
           - '--platform=managed'
           - '--allow-unauthenticated'
@@ -19,16 +19,16 @@ steps:
 
     # Build and deploy transform-service
     - name: 'gcr.io/cloud-builders/docker'
-      args: ['build', '-t', 'gcr.io/$PROJECT_ID/transform-service', '.']
+      args: ['build', '-t', 'gcr.io/$_PROJECT_ID/transform-service', '.']
       dir: 'transform-service'
     - name: 'gcr.io/cloud-builders/docker'
-      args: ['push', 'gcr.io/$PROJECT_ID/transform-service']
+      args: ['push', 'gcr.io/$_PROJECT_ID/transform-service']
     - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
       args:
           - 'run'
           - 'deploy'
           - 'transform-service'
-          - '--image=gcr.io/$PROJECT_ID/transform-service'
+          - '--image=gcr.io/$_PROJECT_ID/transform-service'
           - '--region=asia-southeast1'
           - '--platform=managed'
           - '--allow-unauthenticated'
@@ -36,5 +36,8 @@ steps:
       entrypoint: 'gcloud'
 
 images:
-    - 'gcr.io/$PROJECT_ID/extract-service'
-    - 'gcr.io/$PROJECT_ID/transform-service'
+    - 'gcr.io/$_PROJECT_ID/extract-service'
+    - 'gcr.io/$_PROJECT_ID/transform-service'
+
+substitutions:
+    _PROJECT_ID: '' # Default value (can be overridden)
